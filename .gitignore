@@ -1,0 +1,9 @@
+*.nc
+*.out
+*.h5
+*.xmf
+*.xdmf
+__pycache__
+*.txt
+*.png
+*.pdf
