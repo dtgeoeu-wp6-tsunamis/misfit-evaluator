@@ -85,15 +85,23 @@ def get_scenario_waves(N, data_path, data_folders, indices):
   scenario_time = ds.variables['time'][:]
   return wave_data, scenario_time, scenario_min_height, scenario_max_height
 
-
-def get_PTF_indices_waveheights(ngauges, gauge_times, gauge_data, scenario_time):
+def get_PTF_waveheights(ngauges, gauge_data):
   """
-  Function to compare gauge times and choose the closest PTF scenario time.
-  Additionally saves the minimum and maximum waveheight.
+  Function to save the minimum and maximum PTF waveheight.
   """
-  PTF_indices = []
   minimum_waveheight = np.zeros(ngauges)
   maximum_waveheight = np.zeros(ngauges)
+  for gauge in range(ngauges):
+    minimum_waveheight[gauge] = np.min(gauge_data[gauge])
+    maximum_waveheight[gauge] = np.max(gauge_data[gauge])
+  return minimum_waveheight, maximum_waveheight
+  
+def get_PTF_time_indices(ngauges, gauge_times, scenario_time):
+  """
+  Function to compare gauge times and choose the closest PTF scenario time.
+  """
+  
+  PTF_indices = []
   for gauge in range(ngauges):
     time_array = np.array(gauge_times[gauge])
     sub_indices = np.zeros(len(time_array), dtype=int)
@@ -102,9 +110,7 @@ def get_PTF_indices_waveheights(ngauges, gauge_times, gauge_data, scenario_time)
       time_diff = np.abs(scenario_time - time_value)
       sub_indices[index] = np.argmin(time_diff)
     PTF_indices.append(sub_indices)
-    minimum_waveheight[gauge] = np.min(gauge_data[gauge])
-    maximum_waveheight[gauge] = np.max(gauge_data[gauge])
-  return PTF_indices, minimum_waveheight, maximum_waveheight
+  return PTF_indices
 
 #------------------------------------------------------------------------------------------------------------------------------------------------
 """
@@ -181,22 +187,90 @@ scenario_results, scenario_time, scenario_min_height, scenario_max_height = get_
 stop = time.time()    
 print(f"Reading the data took {stop - start} s.\n")
 
+#------------------------------------------------------------------------------------------------------------------------------------------------
+"""
+Pick arrival times (they have to be used in the time range picking)
+"""
+
 # Get time range and set up time arrays for the gauge data
 time_range = [np.min(scenario_time), np.max(scenario_time)]
 N_scenario_time = len(scenario_time)
 
-# Cut off gauge times and data that lie outside the PTF scenario time range 
-gauge_times = []
-gauge_data = []
+# Overwrite gauge times and data so that they match the scenario time range
 for gauge in range(ngauges):
-  gauge_times.append(time_list[gauge][(time_list[gauge] >= time_range[0]) &
-                                                               (time_list[gauge] <= time_range[1])])
-  gauge_data.append(data_list[gauge][(time_list[gauge] >= time_range[0]) &
-                                                             (time_list[gauge] <= time_range[1])])
+  data_list[gauge] = data_list[gauge][(time_list[gauge] >= time_range[0]) &
+                                                          (time_list[gauge] <= time_range[1])]
+  time_list[gauge] = time_list[gauge][(time_list[gauge] >= time_range[0]) &
+                                                          (time_list[gauge] <= time_range[1])]
+                                                          
+# Get PTF min/max waveheight
+min_waveheight, max_waveheight = get_PTF_waveheights(ngauges, data_list)
 
-# Get indices which compare the gauge time with the closest PTF scenario time and save min/max waveheight
-PTF_indices, min_waveheight, max_waveheight = get_PTF_indices_waveheights(ngauges, gauge_times, gauge_data, scenario_time)
+# Arrival times for the gauges
+arrival_times = np.zeros(ngauges)
+for gauge in range(ngauges):
+  absmax_waveheight = max(np.abs(min_waveheight[gauge]), np.abs(max_waveheight[gauge]))
+  arrtime_trigger = absmax_waveheight * arrtime_percentage
+  tmp_data = data_list[gauge][(time_list[gauge] >= time_range[0])]
+  arrtime_index = np.argmax(np.array(np.abs(tmp_data)) >= arrtime_trigger)
+  arrival_times[gauge] = time_list[gauge][arrtime_index]
 
+# Arrival times for the scenarios
+scenario_arrival_times = np.zeros((N, ngauges))
+for scenario in range(N):
+  for gauge in range(ngauges):
+    current_wave = scenario_results[scenario][:,gauge]
+    scenario_absmaxwaveheight_calc = np.max(np.abs(current_wave))
+    scenario_absmaxwaveheight = max(scenario_absmaxwaveheight_calc,
+                                                      max(np.abs(scenario_min_height[gauge]),
+                                                              np.abs(scenario_max_height[gauge])))
+    arrtime_trigger = scenario_absmaxwaveheight * arrtime_percentage
+    arrtime_trigger = scenario_absmaxwaveheight_calc * arrtime_percentage
+    arrtime_index = np.argmax(np.array(np.abs(current_wave)) >= arrtime_trigger)
+    scenario_arrival_times[scenario, gauge] = scenario_time[arrtime_index]
+
+stop = time.time()    
+print(f"Calculating the arrival times took {stop - start} s.\n")
+#------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Cut off gauge times and data that lie outside the arrival time range 
+gauge_cut_times = []
+gauge_cut_data = []
+for gauge in range(ngauges):
+  gauge_tmp_times = time_list[gauge][time_list[gauge] >= arrival_times[gauge]]
+  gauge_tmp_data = data_list[gauge][time_list[gauge] >= arrival_times[gauge]]  
+  gauge_cut_times.append(gauge_tmp_times)
+  gauge_cut_data.append(gauge_tmp_data)
+
+# Get indices which compare the gauge time with the closest PTF scenario time
+gauge_indices = get_PTF_time_indices(ngauges, gauge_cut_times, scenario_time)
+
+# Cut off scenario data that lies outside the arrival time range 
+scenario_results_cut = []
+for scenario in range(N):
+  for gauge in range(ngauges):
+    scenario_results_tmp = scenario_results[scenario][scenario_time >= scenario_arrival_times[scenario, gauge], gauge]
+    scenario_results_cut.append(scenario_results_tmp)
+
+# Get maximum index for wave comparison (gauge and scenario data have window that needs to be matched for comparison)
+PTF_maxindex = np.zeros((N, ngauges),dtype=int)
+for gauge in range(ngauges):
+  max_index_length = len(gauge_cut_data[gauge])
+  gauge_index = gauge_indices[gauge]
+  # determine index increment for gauge (is either 1 or 2; gauge_data always has increment 1, so the gauge index will be stored with an increment of 1)
+  index_dt = gauge_index[1]-gauge_index[0]  
+  len_gauge = len(gauge_index)    
+  for scenario in range(N):
+    # get lenght of cut scenario results and check if length has to be changed due to index increment
+    len_scenario_old = len(scenario_results_cut[gauge + (ngauges-1)*scenario])
+    new_scenario_index = np.arange(0, len_scenario_old, index_dt, dtype=int)
+    len_scenario = len(new_scenario_index)
+    
+    # calculate highest possible index = lowest length of timeseries
+    min_len = min(len_scenario, max_index_length, len_gauge)
+    PTF_maxindex[scenario, gauge] = min_len
+    #print(min_len)
+    
 #------------------------------------------------------------------------------------------------------------------------------------------------
 """
 Gauge setup
@@ -226,7 +300,7 @@ if (remove_gauges): # This removes gauges 1, 2, 6 and 7 (kos1, kos2, syro and NO
 """
 Arrival times setup
 """
-print("Calculating arrival times.")
+print("Calculating arrival times.\n")
 start = time.time()
 
 # Set up ARRTIME (= arrival times) type at each gauge (will use the same coordinates)
@@ -241,36 +315,6 @@ if (remove_gauges): # This removes gauges 1, 2, 6 and 7 (kos1, kos2, syro and NO
   weights_arrtime[[1,2,6,7]] = 0.
   ARRTIME.renormalize_stationweights()
 
-#------------------------------------------------------------------------------------------------------------------------------------------------
-"""
-Pick arrival times
-"""
-
-# For the gauges
-arrival_times = np.zeros(ngauges)
-for gauge in range(ngauges):
-  absmax_waveheight = max(np.abs(min_waveheight[gauge]), np.abs(max_waveheight[gauge]))
-  arrtime_trigger = absmax_waveheight * arrtime_percentage
-  #arrtime_index = next(x for x, val in enumerate(np.abs(gauge_data[gauge])) if val >= arrtime_trigger)
-  arrtime_index = np.argmax(np.array(np.abs(gauge_data[gauge])) >= arrtime_trigger)
-  arrival_times[gauge] = gauge_times[gauge][arrtime_index]
-
-# For the scenarios
-scenario_arrival_times = np.zeros((N, ngauges))
-for scenario in range(N):
-  for gauge in range(ngauges):
-    current_wave = scenario_results[scenario][:,gauge]
-    scenario_absmaxwaveheight_calc = np.max(np.abs(current_wave))
-    scenario_absmaxwaveheight = max(scenario_absmaxwaveheight_calc,
-                                                      max(np.abs(scenario_min_height[gauge]),
-                                                              np.abs(scenario_max_height[gauge])))
-    arrtime_trigger = scenario_absmaxwaveheight * arrtime_percentage
-    arrtime_trigger = scenario_absmaxwaveheight_calc * arrtime_percentage
-    arrtime_index = np.argmax(np.array(np.abs(current_wave)) >= arrtime_trigger)
-    scenario_arrival_times[scenario, gauge] = scenario_time[arrtime_index]
-
-stop = time.time()    
-print(f"Calculating the arrival times took {stop - start} s.\n")
 
 
 
@@ -315,17 +359,21 @@ start = time.time()
 # This loop structure is faster than calulating the scaled distances/norms in one big loop
 gauges_dist = []
 for gauge in range(ngauges):
-  indices = PTF_indices[gauge]
-  current_scenario_data = np.array(scenario_results)[:, indices, gauge]
-  # Each entry is N x len(indices) array of distances; Results will be normalized
-  gauges_dist.append( np.abs(np.outer(np.ones(N),gauge_data[gauge]) - current_scenario_data))
+  for scenario in range(N):
+    max_index = PTF_maxindex[scenario, gauge]
+    current_scenario_data = scenario_results_cut[scenario][0:max_index][gauge]
+    current_gauge_data = gauge_cut_data[gauge][0:max_index]
+    # Each entry is a len(indices) array of distances; Results will be normalized
+    gauges_dist.append( np.abs(current_gauge_data - current_scenario_data))
   
 gauges_norms = np.zeros((N, ngauges))
-for scenario in range(N):
-  for gauge in range(ngauges):
-    current_dist_gauge = gauges_dist[gauge][scenario]
+idx = 0
+for gauge in range(ngauges):
+  for scenario in range(N):
+    current_dist_gauge = gauges_dist[idx]
     gauges_norms[scenario, gauge] = GAUGES.scaling_func(np.linalg.norm(current_dist_gauge))
-
+    idx += 1
+    
 stop = time.time()    
 print(f"Calculating gauge distances and norms took {stop - start} s.\n")
 
