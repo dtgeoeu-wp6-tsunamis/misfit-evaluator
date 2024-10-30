@@ -269,7 +269,7 @@ Fetch PTF scenario data
 
 # Get data folder names
 data_folders = []
-data_folders += [each for each in sorted(os.listdir(scenario_data_path))]
+data_folders += [each for each in sorted(os.listdir(scenario_data_path)) if os.path.isdir(os.path.join(scenario_data_path, each)) and not each.startswith('.')]
 N = len(data_folders)
 
 # Read and save the scenario results at the gauge POIs and time data
