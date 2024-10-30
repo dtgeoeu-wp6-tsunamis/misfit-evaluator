@@ -2,6 +2,8 @@
 
 As of now, the misfit evaluator only includes a Python script for the Samos test case as well as a src directory that includes class definitions for the misfit evaluator measurement types (e.g. tide gauges, GNSS)
 
+This software is still under development and validation (10/2024)
+
 # Instructions for this misfit evaluator
 
 This script can be run from the command line and needs some additional arguments.
