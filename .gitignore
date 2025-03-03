@@ -7,4 +7,6 @@ __pycache__
 *.txt
 *.png
 *.pdf
+*.csv
 run_test.sh
+misfit_test.py

@@ -389,7 +389,7 @@ for gauge in range(ngauges):
   len_gauge = len(gauge_index)    
   for scenario in range(N):
     # get length of cut scenario results and check if length has to be changed due to index increment
-    len_scenario_old = len(scenario_results_cut[gauge + (ngauges-1)*scenario])
+    len_scenario_old = len(scenario_results_cut[gauge + ngauges*scenario])
     new_scenario_index = np.arange(0, len_scenario_old, index_dt, dtype=int)
     len_scenario = len(new_scenario_index)
     
@@ -473,7 +473,7 @@ gauges_dist = []
 for gauge in range(ngauges):
   for scenario in range(N):
     max_index = PTF_maxindex[scenario, gauge]
-    current_scenario_data = scenario_results_cut[gauge + (ngauges-1)*scenario][0:max_index]
+    current_scenario_data = scenario_results_cut[gauge + ngauges*scenario][0:max_index]
     current_gauge_data = gauge_cut_data[gauge][0:max_index]
     # Each entry is a len(indices) array of distances; Results will be normalized
     gauges_dist.append( np.abs(current_gauge_data - current_scenario_data))
