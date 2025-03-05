@@ -139,7 +139,7 @@ def get_gauge_synthetic(gauge_data_path, gauge_POI, statistical_misfit):
   tmp_wave_data = ds.variables['eta'][:]  
  
   # get number of gauges (which is equal to number of grid points for the synthetic data if not otherwise specified)
-  idx_remove = 23
+  idx_remove = 0 #23
   if (statistical_misfit is True):
     if (gauge_POI is None):
     # The first data points (23) need to be removed because they are observation and not PTF data

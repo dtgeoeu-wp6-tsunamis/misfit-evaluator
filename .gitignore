@@ -10,3 +10,4 @@ __pycache__
 *.csv
 run_test.sh
 misfit_test.py
+/run_test_synthetic.sh
