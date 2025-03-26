@@ -1,4 +1,4 @@
-# Misfit evaluator for the DT-GEO WP6 tsunami workflow. 
+ # Misfit evaluator for the DT-GEO WP6 tsunami workflow. 
 
 As of now, the misfit evaluator only includes a Python script for the Samos test case as well as a src directory that includes class definitions for the misfit evaluator measurement types (e.g. tide gauges, GNSS)
 
