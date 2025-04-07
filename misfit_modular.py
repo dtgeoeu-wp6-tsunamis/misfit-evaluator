@@ -446,8 +446,9 @@ def gauge_scaling_setup(ngauges,min_waveheight,max_waveheight,time_range,synthet
     weigths_gauges = np.ones(ngauges) / ngauges
 
     range_gauges = [np.min(min_waveheight), np.max(max_waveheight)]
-    GAUGES = TypeMeasurement(ngauges, coords_gauges, weigths_gauges, range_gauges, measuretypeweight = 0.5)
-    GAUGES.scale_measured_data()
+    GAUGES = TypeMeasurement(ngauges, coords_gauges, weigths_gauges, range_gauges, measuretypeweight = 0.15)
+    scalmax= range_gauges[1]-range_gauges[0]
+    GAUGES.scale_measured_data(scalmax)
 
 
     # Now Arrival times setup
@@ -456,9 +457,13 @@ def gauge_scaling_setup(ngauges,min_waveheight,max_waveheight,time_range,synthet
     weights_arrtime = np.ones(ngauges) / ngauges
     range_arrtime = time_range
 
-    ARRTIME = TypeMeasurement(ngauges, coords_gauges, weights_arrtime, range_arrtime, measuretypeweight = 0.5)
-    ARRTIME.scale_measured_data()
+    ARRTIME = TypeMeasurement(ngauges, coords_gauges, weights_arrtime, range_arrtime, measuretypeweight = 0.85)
+    scalmax = time_range[1]-time_range[0]
+    ARRTIME.scale_measured_data(scalmax)
 
+    print('INFO: scaling factors:')
+    print('         Arrival time: ',ARRTIME.scaling)
+    print('                Gauge: ',GAUGES.scaling)
     # Remove index 0 and 21 from misfit if syntethic data is used (because for both, the closest station is over 1° away). Index 3 and 22 are removed because the data is bad.
 
     if (synthetic_gauge):
@@ -508,7 +513,7 @@ def calculate_gauge_dist(N,ngauges,PTF_maxindex,scenario_results_cut,gauge_cut_d
     for gauge in range(ngauges):
         for scenario in range(N):
             current_dist_gauge = gauges_dist[idx]
-            gauges_norms[scenario, gauge] = GAUGES.scaling_func(np.linalg.norm(current_dist_gauge))
+            gauges_norms[scenario, gauge] = GAUGES.scaling_func(np.linalg.norm(current_dist_gauge,1))
             idx += 1
     
     stop = time.time()    
@@ -553,8 +558,8 @@ def calculate_misfit(gauges_norms, arrtime_dist_scaled, GAUGES, ARRTIME):
     ARRTIME_misfit = np.dot(arrtime_dist_scaled, ARRTIME.stationweights)
 
     # Calculate total misfit (sum of misfits for each type and the typeweights)
-    MISFIT = GAUGES_misfit * GAUGES.measuretypeweight + \
-               ARRTIME_misfit * ARRTIME.measuretypeweight
+    MISFIT = 1.-(GAUGES_misfit * GAUGES.measuretypeweight + \
+               ARRTIME_misfit * ARRTIME.measuretypeweight)
 
     stop = time.time()    
     print(f"Calculating the misfit took {stop - start} s.\n")
