@@ -48,10 +48,11 @@ J. Behrens, 03/2025
 #------------------------------------------------------------------------------------------------------------------------------------------------
 # Generic modules that are needed 
 #------------------------------------------------------------------------------------------------------------------------------------------------
+import os
+import sys
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 from src.TypeMeasurement import TypeMeasurement 
 from netCDF4 import Dataset
 import time
@@ -74,7 +75,7 @@ def parse_command_line():
         required=True,
     )
     parser.add_argument(
-        "--gauge_path",
+        "--gauge_filename",
         help="Path to the directory where the gauge data is stored.",
         required=True,
     )
@@ -110,14 +111,14 @@ def parse_command_line():
 
     args = parser.parse_args()
     scenario_data_path = args.data_path
-    gauge_data_path = args.gauge_path
+    gauge_data_filename = args.gauge_filename
     synthetic_gauge = args.synthetic_gauge
     statistical_misfit = args.statistical_misfit
     gauge_POI = args.gauge_POI
     plot_arrivaltimes = args.plot_arrivaltimes
     arrtime_percentage = float(args.arrival_time_percentage)
     
-    return scenario_data_path,gauge_data_path,synthetic_gauge,statistical_misfit,gauge_POI,plot_arrivaltimes,arrtime_percentage
+    return scenario_data_path,gauge_data_filename,synthetic_gauge,statistical_misfit,gauge_POI,plot_arrivaltimes,arrtime_percentage
 
 #------------------------------------------------------------------------------------------------------------------------------------------------
 def remove_masked(data):
@@ -196,8 +197,8 @@ def get_scenario_waves(N, data_path, data_folders, indices):
     scenario_min_height = []
     scenario_max_height = []
     for scenario in range(N):
-        if (scenario % 250 == 0):
-            print(f"Fetching scenario {scenario} out of {N} scenarios.")
+        #if (scenario % 250 == 0):
+        print(f"Fetching scenario {scenario} out of {N} scenarios.")
         ncfile = os.path.join(data_path, data_folders[scenario], 'out_ts.nc')
         ds = Dataset(ncfile, 'r', format='NETCDF4')
         scenario_wave_amplitude = ds.variables['eta'][:]
@@ -205,6 +206,7 @@ def get_scenario_waves(N, data_path, data_folders, indices):
         scenario_max_height.append(ds.variables['max_height'][indices])
         scenario_POIs_wave = scenario_wave_amplitude[:, indices]
         wave_data.append(scenario_POIs_wave)
+        print(wave_data)
 
     scenario_time = ds.variables['time'][:]
 
@@ -247,7 +249,7 @@ def get_PTF_time_indices(ngauges, gauge_times, scenario_time):
     return PTF_indices
 
 #------------------------------------------------------------------------------------------------------------------------------------------------
-def load_gauge_data(gauge_data_path,gauge_POI,synthetic_gauge,statistical_misfit):
+def load_gauge_data(gauge_data_filename,gauge_POI,synthetic_gauge,statistical_misfit):
     """
     Function to read gauge data from NetCDF file.
     """
@@ -255,9 +257,12 @@ def load_gauge_data(gauge_data_path,gauge_POI,synthetic_gauge,statistical_misfit
     print("Reading gauge data ")
     start = time.time()
 
+    maskedarray_indices = []
+    # Check if the gauge data is synthetic or real
     if (synthetic_gauge):
     # Synthetic gauge data
-        ngauges, gauge_POI, time_list, data_list, maskedarray_indices = get_gauge_synthetic(gauge_data_path, gauge_POI, statistical_misfit)
+        print('TODO: now is filename instead of path')
+        ngauges, gauge_POI, time_list, data_list, maskedarray_indices = get_gauge_synthetic(gauge_data_filename, gauge_POI, statistical_misfit)
     else:
     # Real gauge data
     # Determine number of gauges from POI list
@@ -266,22 +271,25 @@ def load_gauge_data(gauge_data_path,gauge_POI,synthetic_gauge,statistical_misfit
         else:
             ngauges = len(gauge_POI)
 
-    # Get gauge ASCII file names
-        gauge_list = []
-        gauge_list += [each for each in sorted(os.listdir(gauge_data_path))]
+    ## Get gauge ASCII file names
+    #    gauge_list = []
+    #    gauge_list += [each for each in sorted(os.listdir(gauge_data_path))]
 
     # Read time and waveheight data
-        time_list = []
-        data_list = []
-        gaugedir = os.path.join(gauge_data_path)
-        for gauge in range(ngauges):
-            time_list.append(np.loadtxt(os.path.join(gaugedir, gauge_list[gauge]))[:,0])
-            data_list.append(np.loadtxt(os.path.join(gaugedir, gauge_list[gauge]))[:,1])
+    #     time_list = []
+    #     data_list = []
+    #     gaugedir = os.path.join(gauge_data_path)
+    #     for gauge in range(ngauges):
+    #         time_list.append(np.loadtxt(os.path.join(gaugedir, gauge_list[gauge]))[:,0])
+    #         data_list.append(np.loadtxt(os.path.join(gaugedir, gauge_list[gauge]))[:,1])
+    gauge_data = np.load(gauge_data_filename, allow_pickle=True).item()
+    # print(gauge_data)
     stop = time.time()    
     print(f"Reading the data took {stop - start} s.\n")
         
     # --- return values
-    return ngauges,time_list,data_list,maskedarray_indices
+    # return ngauges,time_list,data_list,maskedarray_indices
+    return ngauges,gauge_data,maskedarray_indices
 #------------------------------------------------------------------------------------------------------------------------------------------------
 def load_scenario_data(ngauges,scenario_data_path, gauge_POI, synthetic_gauge, maskedarray_indices):
     """
@@ -329,7 +337,8 @@ def load_scenario_data(ngauges,scenario_data_path, gauge_POI, synthetic_gauge, m
     return scenario_results, scenario_time, scenario_min_height, scenario_max_height, N, time_range
 
 #------------------------------------------------------------------------------------------------------------------------------------------------
-def pick_arrival_times(ngauges,N,synthetic_gauge,data_list,time_list,\
+# def pick_arrival_times(ngauges,N,synthetic_gauge,data_list,time_list,\
+def pick_arrival_times(ngauges,N,synthetic_gauge,gauge_data,\
         scenario_time,scenario_results,time_range,arrtime_percentage,scenario_min_height,scenario_max_height):
     """
     Pick arrival times (they have to be used in the time range picking)
@@ -338,7 +347,12 @@ def pick_arrival_times(ngauges,N,synthetic_gauge,data_list,time_list,\
     start = time.time()
     # Overwrite gauge times and data so that they match the scenario time range
     if (not synthetic_gauge):
-        for gauge in range(ngauges):
+        # for gauge in range(ngauges):
+        for key, inner_dict in gauge_data.items():
+            print(f"Key: {key}")
+            df = inner_dict['data']
+            print(df)
+            sys.exit()
             data_list[gauge] = data_list[gauge][(time_list[gauge] >= time_range[0]) &
                                                             (time_list[gauge] <= time_range[1])]
             time_list[gauge] = time_list[gauge][(time_list[gauge] >= time_range[0]) &
@@ -576,7 +590,7 @@ def main():
 
     # parse command line
     scenario_data_path,\
-        gauge_data_path,\
+        gauge_data_filename,\
         synthetic_gauge,\
         statistical_misfit,\
         gauge_POI,\
@@ -584,10 +598,8 @@ def main():
         arrtime_percentage = parse_command_line()
 
     # read gauge data
-    ngauges,\
-        time_list,\
-        data_list,\
-        maskedarray_indices = load_gauge_data(gauge_data_path,gauge_POI,synthetic_gauge,statistical_misfit)
+    # ngauges, time_list, data_list, maskedarray_indices = load_gauge_data(gauge_data_filename,gauge_POI,synthetic_gauge,statistical_misfit)
+    ngauges, gauge_data, maskedarray_indices = load_gauge_data(gauge_data_filename,gauge_POI,synthetic_gauge,statistical_misfit)
 
     # read scenario data
     scenario_results,\
@@ -598,6 +610,17 @@ def main():
         time_range = load_scenario_data(ngauges, scenario_data_path, gauge_POI, synthetic_gauge, maskedarray_indices)
 
     # pick arrival times
+    # scenario_arrival_times,\
+    #     arrival_times,\
+    #     gauge_cut_data,\
+    #     scenario_results_cut,\
+    #     PTF_maxindex,\
+    #     min_waveheight,\
+    #     max_waveheight = \
+    #     pick_arrival_times(ngauges,N,synthetic_gauge,\
+    #     data_list,time_list,scenario_time,scenario_results,\
+    #     time_range,arrtime_percentage,\
+    #     scenario_min_height,scenario_max_height)
     scenario_arrival_times,\
         arrival_times,\
         gauge_cut_data,\
@@ -606,7 +629,7 @@ def main():
         min_waveheight,\
         max_waveheight = \
         pick_arrival_times(ngauges,N,synthetic_gauge,\
-        data_list,time_list,scenario_time,scenario_results,\
+        gauge_data,scenario_time,scenario_results,\
         time_range,arrtime_percentage,\
         scenario_min_height,scenario_max_height)
 
